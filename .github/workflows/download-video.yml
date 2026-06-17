@@ -1,0 +1,40 @@
+name: Download Video V1
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Lien de la video a telecharger"
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install yt-dlp
+        run: |
+          python -m pip install --upgrade pip
+          pip install yt-dlp
+
+      - name: Create downloads folder
+        run: mkdir -p downloads
+
+      - name: Download video
+        run: |
+          yt-dlp \
+            -o "downloads/video.%(ext)s" \
+            "${{ github.event.inputs.video_url }}"
+
+      - name: List downloaded files
+        run: ls -lh downloads
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-video
+          path: downloads/
