@@ -16,10 +16,14 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install yt-dlp
+      - name: Install tools
         run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
           pip install yt-dlp
+          ffmpeg -version
+          yt-dlp --version
 
       - name: Create folders
         run: |
@@ -39,6 +43,12 @@ jobs:
         run: |
           INPUT_FILE=$(find downloads -type f | head -n 1)
           echo "Input file: $INPUT_FILE"
+
+          if [ -z "$INPUT_FILE" ]; then
+            echo "No downloaded video found."
+            exit 1
+          fi
+
           ffmpeg -y \
             -i "$INPUT_FILE" \
             -vf "hflip,scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05" \
