@@ -1,4 +1,4 @@
-name: Download Video V1
+name: Download and Mirror Video
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         type: string
 
 jobs:
-  download:
+  download-and-mirror:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +21,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install yt-dlp
 
-      - name: Create downloads folder
-        run: mkdir -p downloads
+      - name: Create folders
+        run: |
+          mkdir -p downloads
+          mkdir -p output
 
       - name: Download video
         run: |
@@ -33,8 +35,27 @@ jobs:
       - name: List downloaded files
         run: ls -lh downloads
 
-      - name: Upload artifact
+      - name: Mirror video with small zoom
+        run: |
+          INPUT_FILE=$(find downloads -type f | head -n 1)
+          echo "Input file: $INPUT_FILE"
+          ffmpeg -y \
+            -i "$INPUT_FILE" \
+            -vf "hflip,scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05" \
+            -c:a copy \
+            output/video_mirror.mp4
+
+      - name: List output files
+        run: ls -lh output
+
+      - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: downloaded-video
+          name: source-video
           path: downloads/
+
+      - name: Upload mirrored artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mirrored-video
+          path: output/
