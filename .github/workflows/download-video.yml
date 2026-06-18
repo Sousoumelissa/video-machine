@@ -1,4 +1,4 @@
-name: Download and Mirror Video
+name: Video Machine V3
 
 on:
   workflow_dispatch:
@@ -7,9 +7,34 @@ on:
         description: "Lien de la video a telecharger"
         required: true
         type: string
+      output_name:
+        description: "Nom du fichier final sans extension"
+        required: false
+        default: "video_final"
+        type: string
+      apply_mirror:
+        description: "Effet miroir gauche/droite"
+        required: false
+        default: false
+        type: boolean
+      apply_zoom:
+        description: "Petit zoom 5 pour cent"
+        required: false
+        default: false
+        type: boolean
+      remove_audio:
+        description: "Supprimer le son"
+        required: false
+        default: false
+        type: boolean
+      reverse_video:
+        description: "Lire la video a l'envers"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  download-and-mirror:
+  process-video:
     runs-on: ubuntu-latest
 
     steps:
@@ -33,13 +58,16 @@ jobs:
       - name: Download video
         run: |
           yt-dlp \
-            -o "downloads/video.%(ext)s" \
+            -o "downloads/source.%(ext)s" \
             "${{ github.event.inputs.video_url }}"
 
-      - name: List downloaded files
-        run: ls -lh downloads
-
-      - name: Mirror video with small zoom
+      - name: Process video with selected options
+        env:
+          OUTPUT_NAME: ${{ github.event.inputs.output_name }}
+          APPLY_MIRROR: ${{ github.event.inputs.apply_mirror }}
+          APPLY_ZOOM: ${{ github.event.inputs.apply_zoom }}
+          REMOVE_AUDIO: ${{ github.event.inputs.remove_audio }}
+          REVERSE_VIDEO: ${{ github.event.inputs.reverse_video }}
         run: |
           INPUT_FILE=$(find downloads -type f | head -n 1)
           echo "Input file: $INPUT_FILE"
@@ -49,14 +77,55 @@ jobs:
             exit 1
           fi
 
-          ffmpeg -y \
-            -i "$INPUT_FILE" \
-            -vf "hflip,scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05" \
-            -c:a copy \
-            output/video_mirror.mp4
+          SAFE_NAME=$(echo "${OUTPUT_NAME:-video_final}" | tr -cd '[:alnum:]_-')
+          if [ -z "$SAFE_NAME" ]; then
+            SAFE_NAME="video_final"
+          fi
+
+          VIDEO_FILTERS=""
+          AUDIO_OPTIONS="-c:a copy"
+
+          if [ "$APPLY_MIRROR" = "true" ]; then
+            VIDEO_FILTERS="${VIDEO_FILTERS},hflip"
+          fi
+
+          if [ "$APPLY_ZOOM" = "true" ]; then
+            VIDEO_FILTERS="${VIDEO_FILTERS},scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05"
+          fi
+
+          if [ "$REVERSE_VIDEO" = "true" ]; then
+            VIDEO_FILTERS="${VIDEO_FILTERS},reverse"
+            AUDIO_OPTIONS="-af areverse"
+          fi
+
+          VIDEO_FILTERS=${VIDEO_FILTERS#,}
+
+          if [ -z "$VIDEO_FILTERS" ] && [ "$REMOVE_AUDIO" != "true" ] && [ "$REVERSE_VIDEO" != "true" ]; then
+            echo "No transformation selected. Copying original video."
+            cp "$INPUT_FILE" "output/${SAFE_NAME}_original.mp4"
+          else
+            if [ "$REMOVE_AUDIO" = "true" ]; then
+              AUDIO_OPTIONS="-an"
+            fi
+
+            if [ -z "$VIDEO_FILTERS" ]; then
+              ffmpeg -y \
+                -i "$INPUT_FILE" \
+                $AUDIO_OPTIONS \
+                "output/${SAFE_NAME}_processed.mp4"
+            else
+              ffmpeg -y \
+                -i "$INPUT_FILE" \
+                -vf "$VIDEO_FILTERS" \
+                $AUDIO_OPTIONS \
+                "output/${SAFE_NAME}_processed.mp4"
+            fi
+          fi
 
       - name: List output files
-        run: ls -lh output
+        run: |
+          ls -lh downloads
+          ls -lh output
 
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
@@ -64,8 +133,8 @@ jobs:
           name: source-video
           path: downloads/
 
-      - name: Upload mirrored artifact
+      - name: Upload final artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mirrored-video
+          name: final-video
           path: output/
